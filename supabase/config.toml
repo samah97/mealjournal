@@ -1,0 +1,20 @@
+# Supabase CLI configuration for MealJournal.
+# Local stack: `npx supabase start`. Hosted project: `npx supabase link --project-ref <ref>`.
+project_id = "mealjournal"
+
+[auth]
+# Replace with your deployed URL for production (or set it in the dashboard).
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/sharing", "http://127.0.0.1:5173/sharing"]
+
+[auth.email]
+enable_signup = true
+
+# The template includes the one-time code, so you can sign in inside the installed app.
+[auth.email.template.magic_link]
+subject = "Your MealJournal sign-in code"
+content_path = "./supabase/templates/magic_link.html"
+
+[functions.get-shared-report]
+# Recipients have no account: the function authorises access itself via the share token.
+verify_jwt = false
