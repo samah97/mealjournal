@@ -1,6 +1,14 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { DiaryEntry, Food, MealTemplate, Photo, Settings, ShareLinkRecord } from './types'
 import { DEFAULT_TIME_ZONE } from './datetime'
+import type { OutboxItem } from './sync/merge'
+import { skipTracking, trackingMiddleware } from './sync/tracking'
+
+/** Per-device sync state: accountId, cursor, lastSyncedAt, photoDownloads … */
+export interface SyncMetaRow {
+  key: string
+  value: unknown
+}
 
 export class MealJournalDB extends Dexie {
   foods!: EntityTable<Food, 'id'>
@@ -9,6 +17,8 @@ export class MealJournalDB extends Dexie {
   photos!: EntityTable<Photo, 'id'>
   settings!: EntityTable<Settings, 'id'>
   shareLinks!: EntityTable<ShareLinkRecord, 'id'>
+  outbox!: Dexie.Table<OutboxItem, [string, string]>
+  syncMeta!: EntityTable<SyncMetaRow, 'key'>
 
   constructor(name = 'mealjournal') {
     super(name)
@@ -21,6 +31,12 @@ export class MealJournalDB extends Dexie {
       settings: 'id',
       shareLinks: 'id, createdAt',
     })
+    // Device sync: pending local changes (one row per record) and per-device sync state.
+    this.version(2).stores({
+      outbox: '[collection+recordId], queuedAt',
+      syncMeta: 'key',
+    })
+    this.use(trackingMiddleware)
   }
 }
 
@@ -55,4 +71,12 @@ export async function requestPersistentStorage(): Promise<boolean | null> {
   if (!navigator.storage?.persist) return null
   if (await navigator.storage.persisted()) return true
   return navigator.storage.persist()
+}
+
+/** Remove the whole diary and sync state from this device (sign-out, account switch). */
+export async function wipeLocalData(): Promise<void> {
+  await db.transaction('rw', db.tables, async (tx) => {
+    skipTracking(tx)
+    await Promise.all(db.tables.map((t) => t.clear()))
+  })
 }

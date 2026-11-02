@@ -6,7 +6,9 @@ import {
   FileText,
   HardDrive,
   Link2,
+  LogOut,
   Lock,
+  RefreshCw,
   Smartphone,
   Sparkles,
   Trash2,
@@ -21,10 +23,14 @@ import { Field, Input, Select } from '@/components/ui/Field'
 import { Card, PageHeader, SectionTitle, Spinner, Switch } from '@/components/ui/misc'
 import { backupFilename, backupStats, createBackup, parseBackup, restoreBackup } from '@/lib/backup'
 import { db, updateSettings } from '@/lib/db'
-import { useSettings } from '@/lib/hooks'
+import { useOnline, useSettings } from '@/lib/hooks'
 import { useInstallPrompt } from '@/lib/install'
 import { deleteAllData } from '@/lib/repo'
-import { getSupabase, isSharingConfigured } from '@/lib/share/supabase'
+import { getCurrentUser } from '@/lib/share/api'
+import { isSharingConfigured } from '@/lib/share/supabase'
+import { signOutAndWipe, unsyncedChanges } from '@/lib/sync/account'
+import { flush } from '@/lib/sync/engine'
+import { describeSync, useSync } from '@/lib/sync/useSync'
 import { addStarterFoods, removeStarterFoods } from '@/lib/starter'
 import { downloadBlob, formatBytes, pluralise } from '@/lib/utils'
 
@@ -60,6 +66,12 @@ export function SettingsPage() {
   const confirm = useConfirm()
   const { canInstall, install, installed } = useInstallPrompt()
   const storage = useStorageInfo()
+  const sync = useSync()
+  const online = useOnline()
+  const [email, setEmail] = useState<string>()
+  useEffect(() => {
+    void getCurrentUser().then((u) => setEmail(u?.email ?? undefined))
+  }, [])
   const fileRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const counts = useLiveQuery(
@@ -99,7 +111,7 @@ export function SettingsPage() {
       const s = backupStats(backup)
       const ok = await confirm({
         title: 'Restore this backup?',
-        message: `This replaces everything on this device with the backup from ${new Date(backup.exportedAt).toLocaleString('en-GB')}: ${pluralise(s.entries, 'entry', 'entries')}, ${pluralise(s.foods, 'food')}, ${pluralise(s.mealTemplates, 'meal')} and ${pluralise(s.photos, 'photo')}.`,
+        message: `This replaces your diary on all your devices with the backup from ${new Date(backup.exportedAt).toLocaleString('en-GB')}: ${pluralise(s.entries, 'entry', 'entries')}, ${pluralise(s.foods, 'food')}, ${pluralise(s.mealTemplates, 'meal')} and ${pluralise(s.photos, 'photo')}.`,
         confirmLabel: 'Replace & restore',
         danger: true,
       })
@@ -116,9 +128,9 @@ export function SettingsPage() {
 
   async function wipe() {
     const ok = await confirm({
-      title: 'Delete all data on this device?',
+      title: 'Delete all your data?',
       message:
-        'Every diary entry, food, meal, photo and setting on this device will be permanently deleted. Shared links stay online until you revoke them – revoke them first if needed. Consider exporting a backup first.',
+        'Every diary entry, food, meal, photo and setting is deleted from this device and from your account, so from all your devices too. Shared links stay online until you revoke them – revoke them first if needed. Consider exporting a backup first.',
       confirmLabel: 'Delete everything',
       danger: true,
     })
@@ -126,13 +138,55 @@ export function SettingsPage() {
     const sure = await confirm({ title: 'Are you absolutely sure?', message: 'This cannot be undone.', confirmLabel: 'Yes, delete', danger: true })
     if (!sure) return
     await deleteAllData()
-    if (isSharingConfigured()) await getSupabase().then((sb) => sb.auth.signOut()).catch(() => {})
-    toast.success('All data deleted')
+    // Deletions reach the account as tombstones; stay signed in until they are uploaded.
+    const left = await unsyncedChanges()
+    if (left > 0) toast.warning("You're offline – the deletion will reach your account when you reconnect. Stay signed in until then.")
+    else toast.success('All data deleted')
+  }
+
+  async function signOut(everywhere: boolean) {
+    const left = await unsyncedChanges()
+    const ok = await confirm({
+      title: everywhere ? 'Sign out on all devices?' : 'Sign out?',
+      message:
+        left > 0
+          ? `${pluralise(left, 'change')} could not be uploaded yet and will be lost, because signing out removes the diary from this device. Connect to the internet first to keep them.`
+          : 'Your diary stays in your account. It is removed from this device, and you can sign in again at any time.',
+      confirmLabel: left > 0 ? 'Sign out and lose changes' : 'Sign out',
+      danger: left > 0,
+    })
+    if (!ok) return
+    await signOutAndWipe(everywhere)
   }
 
   return (
     <div>
       <PageHeader title="Settings" large />
+
+      <SectionTitle>Account & sync</SectionTitle>
+      <Card className="divide-y divide-line/70">
+        <Row
+          icon={<RefreshCw className={`size-4.5 ${sync.status === 'syncing' ? 'animate-spin' : ''}`} />}
+          title={email ? `Signed in as ${email}` : 'Signed in'}
+          description={describeSync(sync)}
+        >
+          <Button size="sm" variant="secondary" onClick={() => void flush()} disabled={sync.status === 'syncing' || !online}>
+            Sync now
+          </Button>
+        </Row>
+        <Row
+          icon={<LogOut className="size-4.5" />}
+          title="Sign out"
+          description="Removes the diary from this device. It stays in your account."
+        >
+          <Button size="sm" variant="secondary" onClick={() => void signOut(false)}>
+            Sign out
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => void signOut(true)}>
+            Sign out everywhere
+          </Button>
+        </Row>
+      </Card>
 
       <SectionTitle>Diary</SectionTitle>
       <Card className="flex flex-col gap-4 p-4">
@@ -215,7 +269,7 @@ export function SettingsPage() {
         <Row
           icon={<Database className="size-4.5" />}
           title="Backup & restore"
-          description="A complete JSON file including photos. Restoring replaces all data on this device."
+          description="A complete JSON file including photos. Restoring replaces your diary on all your devices."
         >
           <Button size="sm" variant="secondary" onClick={() => void exportBackup()} disabled={!!busy}>
             {busy ? <Spinner /> : <Download className="size-4" />} {busy ?? 'Export'}
@@ -263,8 +317,8 @@ export function SettingsPage() {
             <Lock className="size-4.5" />
           </span>
           <div className="space-y-2 text-sm leading-relaxed text-ink-2">
-            <p>Your diary and photos are stored only in this browser on this device. There are no ads, analytics or trackers, and photos are never analysed or uploaded automatically.</p>
-            <p>Data leaves this device only when you explicitly publish a private link – and then only the report you selected.</p>
+            <p>Your diary and photos are stored on this device and synced to your own account on our server (hosted in the EU), so all your devices show the same diary. Only you can access them: every record is protected by row-level security and photos sit in a private bucket. They are not end-to-end encrypted, so the person who runs the server can technically read them.</p>
+            <p>There are no ads, analytics or trackers, and photos are never analysed. A report is shared only when you explicitly publish a private link – and then only the report you selected. The account is invite-only.</p>
           </div>
         </div>
       </Card>
@@ -272,7 +326,7 @@ export function SettingsPage() {
       <SectionTitle>Danger zone</SectionTitle>
       <Card className="p-4">
         <Button variant="danger-soft" block onClick={() => void wipe()}>
-          <Trash2 className="size-4" /> Delete all data on this device
+          <Trash2 className="size-4" /> Delete all my data
         </Button>
       </Card>
 

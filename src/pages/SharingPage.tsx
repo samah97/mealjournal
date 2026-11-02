@@ -1,6 +1,6 @@
 import type { User } from '@supabase/supabase-js'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Check, Copy, KeyRound, Link2, LogOut, Mail, MessageCircle, Plus, Share2, ShieldCheck, Trash2, Unplug } from 'lucide-react'
+import { Check, Copy, KeyRound, Link2, Mail, MessageCircle, Plus, Share2, Trash2, Unplug } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router'
 import { toast } from 'sonner'
@@ -19,10 +19,7 @@ import {
   deleteShareLink,
   publishReport,
   revokeShareLink,
-  sendSignInCode,
-  signOut,
   syncShareLinks,
-  verifySignInCode,
 } from '@/lib/share/api'
 import { getSupabase, isSharingConfigured } from '@/lib/share/supabase'
 import type { ShareLinkRecord } from '@/lib/types'
@@ -47,91 +44,6 @@ function NotConfigured() {
             <code className="rounded bg-subtle px-1 text-xs">VITE_SUPABASE_PUBLISHABLE_KEY</code> and follow the Supabase steps in
             the README.
           </p>
-        </div>
-      </div>
-    </Card>
-  )
-}
-
-function SignIn() {
-  const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
-  const [sent, setSent] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const online = useOnline()
-
-  return (
-    <Card className="p-5">
-      <div className="flex gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-accent-ink">
-          <ShieldCheck className="size-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="font-semibold">Sign in to publish links</h2>
-          <p className="mt-1 text-sm leading-relaxed text-muted">
-            Only you need an account – your dietitian just opens the link. We'll email you a one-time code; no password needed.
-          </p>
-          {!sent ? (
-            <form
-              className="mt-4 flex flex-col gap-2.5 sm:flex-row"
-              onSubmit={async (e) => {
-                e.preventDefault()
-                setBusy(true)
-                try {
-                  await sendSignInCode(email.trim())
-                  setSent(true)
-                  toast.success('Check your email for the code')
-                } catch (err) {
-                  toast.error((err as Error).message)
-                } finally {
-                  setBusy(false)
-                }
-              }}
-            >
-              <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" className="flex-1" />
-              <Button type="submit" disabled={busy || !online}>
-                {busy ? <Spinner /> : <Mail className="size-4" />} Send code
-              </Button>
-            </form>
-          ) : (
-            <form
-              className="mt-4 flex flex-col gap-2.5"
-              onSubmit={async (e) => {
-                e.preventDefault()
-                setBusy(true)
-                try {
-                  await verifySignInCode(email.trim(), code)
-                  toast.success('Signed in')
-                } catch (err) {
-                  toast.error((err as Error).message)
-                } finally {
-                  setBusy(false)
-                }
-              }}
-            >
-              <p className="text-sm text-ink-2">
-                Enter the code sent to <strong>{email}</strong>, or tap the link in the email.
-              </p>
-              <div className="flex gap-2.5">
-                <Input
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="123456"
-                  maxLength={10}
-                  className="tabular flex-1 tracking-[0.3em]"
-                />
-                <Button type="submit" disabled={busy || code.length < 6}>
-                  {busy && <Spinner />} Verify
-                </Button>
-              </div>
-              <button type="button" className="self-start text-xs font-medium text-accent-ink" onClick={() => setSent(false)}>
-                Use a different email
-              </button>
-            </form>
-          )}
-          {!online && <p className="mt-2 text-xs text-warn">You're offline. Connect to sign in.</p>}
         </div>
       </div>
     </Card>
@@ -302,16 +214,11 @@ export default function SharingPage() {
           <Spinner className="size-6" />
         </div>
       ) : !user ? (
-        <SignIn />
+        <div className="grid place-items-center py-16 text-muted">
+          <Spinner className="size-6" />
+        </div>
       ) : (
         <>
-          <div className="mb-4 flex items-center justify-between gap-3 text-sm text-muted">
-            <span className="truncate">Signed in as {user.email}</span>
-            <Button variant="ghost" size="sm" onClick={() => void signOut()}>
-              <LogOut className="size-4" /> Sign out
-            </Button>
-          </div>
-
           {cfg ? (
             <div className="flex flex-col gap-4">
               <ReportOptionsForm value={cfg} onChange={setCfg} today={today} />

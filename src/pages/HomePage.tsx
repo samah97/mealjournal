@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowRight, ChefHat, FileText, GlassWater, History, Plus, Sparkles, UtensilsCrossed } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
-import { OfflineBadge } from '@/components/AppShell'
+import { OfflineBadge, SyncStatusLine } from '@/components/AppShell'
 import { Thumb, sortByRecent } from '@/components/library'
 import { NutritionTable } from '@/components/nutrition'
 import { DayTimeline } from '@/components/timeline'
@@ -60,6 +60,7 @@ export function HomePage() {
         </Link>
       </header>
       <OfflineBadge className="mb-2 w-fit" />
+      <SyncStatusLine className="mb-1 text-xs text-muted lg:hidden" />
 
       <Card className="mt-3 p-4">
         <p className="text-[0.9375rem] text-ink-2">
@@ -129,7 +130,7 @@ export function HomePage() {
             <div>
               <h2 className="font-semibold">Welcome to MealJournal</h2>
               <p className="mt-1 text-sm leading-relaxed text-muted">
-                Record what you eat and drink, with photos if you like. Everything stays on this device. When you're ready,
+                Record what you eat and drink, with photos if you like. Your diary is saved on this device and synced to your account. When you're ready,
                 create a PDF or a private link for your dietitian.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">

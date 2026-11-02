@@ -5,8 +5,6 @@ import { Toaster } from 'sonner'
 import { ConfirmProvider } from './components/ui/confirm'
 import { requestPersistentStorage } from './lib/db'
 import { captureInstallPrompt } from './lib/install'
-import { processPendingRevocations } from './lib/share/api'
-import { isSharingConfigured } from './lib/share/supabase'
 import { router } from './router'
 import './index.css'
 
@@ -14,12 +12,6 @@ captureInstallPrompt()
 
 // Keep diary data from being evicted under storage pressure.
 void requestPersistentStorage()
-
-// Revocations requested while offline are sent as soon as we're back online.
-if (isSharingConfigured()) {
-  void processPendingRevocations()
-  window.addEventListener('online', () => void processPendingRevocations())
-}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

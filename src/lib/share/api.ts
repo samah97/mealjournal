@@ -12,6 +12,7 @@ import { reportPhotoIds } from '../report/buildReport'
 import type { ReportData } from '../report/types'
 import type { ShareLinkRecord } from '../types'
 import { uid } from '../utils'
+import { skipTracking } from '../sync/tracking'
 import { getSupabase, isSharingConfigured, supabaseConfig } from './supabase'
 
 const BUCKET = 'report-photos'
@@ -25,24 +26,40 @@ export async function getCurrentUser() {
   return data.session?.user ?? null
 }
 
+/** Shown for every address, known or not, so the app never reveals who has an account. */
+export const CODE_SENT_MESSAGE = 'If this address has an account, a code is on its way.'
+
+/**
+ * Ask for a sign-in code. Accounts are invite-only: `shouldCreateUser: false`, and the
+ * server rejects unknown addresses too. That rejection is swallowed, so a known and an
+ * unknown address look exactly the same. Other failures (rate limits, network) are real.
+ */
 export async function sendSignInCode(email: string): Promise<void> {
   const sb = await getSupabase()
   const { error } = await sb.auth.signInWithOtp({
     email,
-    options: { shouldCreateUser: true, emailRedirectTo: `${location.origin}/sharing` },
+    options: { shouldCreateUser: false, emailRedirectTo: location.origin },
   })
-  if (error) throw new Error(error.message)
+  if (!error || isUnknownAccountError(error)) return
+  if (error.status === 429 || /rate limit|too many|seconds/i.test(error.message)) {
+    throw new Error('Too many attempts. Please wait a minute and try again.')
+  }
+  throw new Error('Could not send the code. Check your connection and try again.')
+}
+
+export function isUnknownAccountError(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === 'otp_disabled' ||
+    error.code === 'signup_disabled' ||
+    error.code === 'user_not_found' ||
+    /signups? not allowed|user not found/i.test(error.message ?? '')
+  )
 }
 
 export async function verifySignInCode(email: string, code: string): Promise<void> {
   const sb = await getSupabase()
   const { error } = await sb.auth.verifyOtp({ email, token: code.trim(), type: 'email' })
-  if (error) throw new Error(error.message)
-}
-
-export async function signOut(): Promise<void> {
-  const sb = await getSupabase()
-  await sb.auth.signOut()
+  if (error) throw new Error('That code is wrong or has expired. Request a new one.')
 }
 
 // ---------------------------------------------------------------- publishing
@@ -166,7 +183,10 @@ export async function syncShareLinks(): Promise<void> {
   if (error || !data) return
   const local = new Map((await db.shareLinks.toArray()).map((l) => [l.id, l]))
   const rows = data as RemoteReport[]
-  await db.shareLinks.bulkPut(
+  // Derived from the server, so not queued for device sync (every device does the same).
+  await db.transaction('rw', [db.shareLinks, db.outbox], async (tx) => {
+    skipTracking(tx)
+    await db.shareLinks.bulkPut(
     rows.map((r) => {
       const existing = local.get(r.id)
       return {
@@ -185,7 +205,8 @@ export async function syncShareLinks(): Promise<void> {
         viewCount: r.view_count,
       } satisfies ShareLinkRecord
     }),
-  )
+    )
+  })
 }
 
 /** Revoke immediately; when offline the request is queued and retried on reconnect. */

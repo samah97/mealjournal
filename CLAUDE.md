@@ -1,6 +1,6 @@
 # MealJournal – guidance for Claude
 
-Private, local-first food diary PWA (React 19 + TS strict + Vite 8 + Tailwind 4 + Dexie). Produces PDF reports and optional private share links (Supabase) for a dietitian. User-facing docs, setup and deployment: [README.md](README.md).
+Private, local-first food diary PWA (React 19 + TS strict + Vite 8 + Tailwind 4 + Dexie). Sign-in is required (invite-only Supabase accounts); the diary syncs between a user's devices. Produces PDF reports and optional private share links (Supabase) for a dietitian. User-facing docs, setup and deployment: [README.md](README.md).
 
 ## Commands
 
@@ -20,8 +20,9 @@ npm run preview      # production build on :4173 – use for PWA/offline checks
 - **Missing ≠ zero**: unknown nutrient values are absent keys, shown as "—"; incomplete sums show "≥" (HTML) / "*" (PDF) with an explanation. Never invent or estimate values.
 - **Never assume unit weights**: piece/tbsp/cup/etc. only convert via user-defined `UnitConversion`s. Only metric units convert automatically.
 - **History is immutable**: logging copies food/meal data into `DiaryEntryItem` snapshots (`src/lib/snapshot.ts`). Library edits/deletes must never change past entries. Shared reports are a further frozen snapshot.
-- **Privacy**: diary stays in IndexedDB. Only an explicitly published report (and only the fields/photos the user selected) is uploaded. No analytics, no external fonts/CDNs, no diary data in URL query params (use router state). Share tokens live in the URL **fragment**.
-- **Never fake features**: if Supabase env vars are missing, sharing UI explains it; never generate a non-functional link.
+- **Privacy**: the diary is stored on the device (IndexedDB first) and synced to the user's own account in our Supabase project, behind RLS (owner-only), not end-to-end encrypted. A report is shared with others only when explicitly published (and only the fields/photos the user selected). No analytics, no external fonts/CDNs, no diary data in URL query params (use router state). Share tokens live in the URL **fragment**; the raw share URL is never synced (only its hash is on the server).
+- **Accounts**: invite-only. Never create users from the client (`shouldCreateUser: false`, signups disabled in config and dashboard), never reveal whether an address has an account, never trust `owner_id` from the client. Sign-out wipes the local diary after flushing the outbox.
+- **Never fake features**: if Supabase env vars are missing, the app shows a "not set up" screen (no fake login); never generate a non-functional link.
 - Any demo content must be labelled and removable (`isExample` starter foods, no nutrition).
 - UI: calm neutral + sage, Inter (bundled), mobile-first, one-hand reachable actions, bottom sheets on phone.
 
@@ -30,7 +31,8 @@ npm run preview      # production build on :4173 – use for PWA/offline checks
 - `src/lib/types.ts` – domain model. `db.ts` – Dexie schema (**add a new `version()` for schema changes; never edit old ones**), settings defaults. `repo.ts` – all writes (transactions, photo ref-counting via `releasePhotos`).
 - `nutrition.ts` – pure engine (`nutritionFactor`, `itemNutrition`, `combineSummaries`, `entryNutrition`). `units.ts` – units + `toBaseAmount`.
 - `report/buildReport.ts` – pure: entries + options → `ReportData` (only selected fields included; tested). `ReportView.tsx` renders it as HTML (preview + share page); `report/pdf.tsx` renders the PDF (lazy-loaded chunk).
-- `share/api.ts` – publish/revoke/delete/sync + recipient fetch. `share/supabase.ts` – lazy client, `isSharingConfigured()`.
+- `share/api.ts` – sign-in codes, publish/revoke/delete + recipient fetch.
+- `sync/` – device sync. `merge.ts` pure rules (LWW, serialisation, account binding, backoff); `tracking.ts` Dexie DBCore middleware that queues every write to a synced table in `outbox` (use `skipTracking(tx)` for writes that come from the server); `engine.ts` push → pull → apply → photos, single-flight, `startSync()` scheduling; `account.ts` sign-out + wipe. `components/AuthGate.tsx` guards all app routes (not `/shared`). Server: `supabase/migrations/*_sync.sql` (`sync_records`, per-owner `seq` via `sync_cursor`, `sync_push` LWW RPC, private `sync-photos` bucket); pgTAP in `supabase/tests/sync_records_rls.test.sql`. Dexie `version(2)` added `outbox` + `syncMeta`. `share/supabase.ts` – lazy client, `isSharingConfigured()`.
 - `supabase/functions/_shared/access.ts` – **single source of truth** for token/PIN hashing and access decisions, imported by the browser, the Edge Function (Deno, `.ts` import extensions) and tests.
 - `supabase/migrations/` – `shared_reports` table, RLS, triggers (revocation is permanent and wipes payload), column-level grants, private `report-photos` bucket (`<uid>/<reportId>/<photoId>.jpg`). `supabase/tests/` – pgTAP.
 - Pages are one file per route in `src/pages`; routes in `src/router.tsx` (`handle: { hideNav, wide }`). UI kit in `src/components/ui`.
@@ -48,15 +50,15 @@ npm run preview      # production build on :4173 – use for PWA/offline checks
 - jsdom Blobs don't survive fake-indexeddb cloning → DB tests that read Blobs use `// @vitest-environment node`.
 - In the Claude Browser pane, screenshots can lag/stale; verify state via JS/DOM. After toggling viewport emulation, reload before measuring layout.
 
-## Testing sharing end-to-end locally
+## Testing sync and sharing end-to-end locally
 
 Needs Docker Desktop running.
 ```bash
 npx -y supabase@2 start                       # applies migrations
-npx -y supabase@2 test db                     # pgTAP (10 tests)
+npx -y supabase@2 test db                     # pgTAP (shared_reports + sync)
 npx -y supabase@2 functions serve --no-verify-jwt
 ```
-Temporary `.env.development.local` with `VITE_SUPABASE_URL=http://127.0.0.1:54321` + the printed publishable key; sign-in codes appear in Mailpit (http://127.0.0.1:54324, API `/api/v1/messages`). Open share links on the `recipient` origin. Afterwards: delete the env file and `npx supabase stop --no-backup`.
+Temporary `.env.development.local` with `VITE_SUPABASE_URL=http://127.0.0.1:54321` + the printed publishable key. Signups are disabled, so create users with the admin API (`POST /auth/v1/admin/users`, secret key, `email_confirm: true`); sign-in codes appear in Mailpit (http://127.0.0.1:54324, API `/api/v1/search?query=to:<email>`; the same address can only be mailed once per 60 s). Use `dev` and `recipient` as two devices (they move to other ports if 5173/5174 are taken); open share links on the `recipient` origin. Simulate offline by overriding `navigator.onLine` in the page. Drive Dexie from the page console with `await import('/src/lib/db.ts')`. Afterwards: delete the env file and `npx supabase stop --no-backup`.
 
 ## Conventions
 

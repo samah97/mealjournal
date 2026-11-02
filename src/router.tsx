@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter } from 'react-router'
 import { AppShell } from './components/AppShell'
+import { AuthGate } from './components/AuthGate'
 import { AddPage } from './pages/AddPage'
 import { DiaryPage } from './pages/DiaryPage'
 import { EntryDetailPage } from './pages/EntryDetailPage'
@@ -30,7 +31,11 @@ export const router = createBrowserRouter([
     ),
   },
   {
-    element: <AppShell />,
+    element: (
+      <AuthGate>
+        <AppShell />
+      </AuthGate>
+    ),
     children: [
       { index: true, element: <HomePage /> },
       { path: 'diary', element: <DiaryPage /> },

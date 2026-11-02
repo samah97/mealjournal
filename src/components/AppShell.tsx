@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useMatches } from 'react-router'
 import { toast } from 'sonner'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useOnline } from '@/lib/hooks'
+import { describeSync, useSync } from '@/lib/sync/useSync'
 import { cn } from '@/lib/utils'
 import { ButtonLink } from './ui/Button'
 import { Spinner } from './ui/misc'
@@ -51,8 +52,20 @@ export function OfflineBadge({ className }: { className?: string }) {
   return (
     <div className={cn('flex items-center gap-1.5 rounded-full bg-warn-soft px-3 py-1.5 text-xs font-medium text-warn', className)} role="status">
       <CloudOff className="size-3.5" />
-      Offline · entries are saved on this device
+      Offline · entries are saved and will sync later
     </div>
+  )
+}
+
+/** Small, quiet sync status: a dot and a short line. */
+export function SyncStatusLine({ className }: { className?: string }) {
+  const sync = useSync()
+  const tone = sync.status === 'error' ? 'bg-danger' : sync.status === 'offline' ? 'bg-warn' : 'bg-accent'
+  return (
+    <span className={cn('flex items-center gap-1.5', className)} role="status">
+      <span className={cn('size-1.5 rounded-full', tone, sync.status === 'syncing' && 'animate-pulse')} />
+      {describeSync(sync)}
+    </span>
   )
 }
 
@@ -114,13 +127,7 @@ export function AppShell() {
           ))}
         </nav>
         <div className="mt-auto px-2 text-xs text-muted">
-          {online ? (
-            <span className="flex items-center gap-1.5">
-              <span className="size-1.5 rounded-full bg-accent" /> Saved on this device
-            </span>
-          ) : (
-            <OfflineBadge />
-          )}
+          {online ? <SyncStatusLine /> : <OfflineBadge />}
         </div>
       </aside>
 
