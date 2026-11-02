@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { CalendarClock, ChefHat, Copy, Pencil, Repeat2, Trash2 } from 'lucide-react'
+import { CalendarClock, ChefHat, Copy, Heart, Pencil, Repeat2, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
@@ -16,7 +16,7 @@ import { db } from '@/lib/db'
 import { formatLongDate, isValidDate, isValidTime, nowInZone } from '@/lib/datetime'
 import { useSettings } from '@/lib/hooks'
 import { entryNutrition, itemNutrition } from '@/lib/nutrition'
-import { deleteEntry, duplicateEntry, moveEntry, newTemplate, saveTemplate } from '@/lib/repo'
+import { deleteEntry, duplicateEntry, favouriteFromEntry, libraryFoodForEntry, moveEntry, newTemplate, saveTemplate, toggleFoodFavourite } from '@/lib/repo'
 import { entryItemsToTemplateItems } from '@/lib/snapshot'
 import { formatQuantity } from '@/lib/units'
 import { cn } from '@/lib/utils'
@@ -74,6 +74,7 @@ export function EntryDetailPage() {
   const [viewing, setViewing] = useState<PhotoSlot | null>(null)
   const [moving, setMoving] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
+  const linkedFood = useLiveQuery(() => (entry ? libraryFoodForEntry(entry) : undefined), [entry])
 
   if (entry === null) return null
   if (!entry) {
@@ -102,6 +103,20 @@ export function EntryDetailPage() {
     navigate('/diary', { replace: true })
   }
 
+  async function toggleFavourite() {
+    if (!entry) return
+    if (linkedFood?.favourite) {
+      await toggleFoodFavourite(linkedFood.id)
+      toast.success(`Removed “${linkedFood.name}” from favourites`)
+      return
+    }
+    const food = await favouriteFromEntry(entry)
+    toast.success(
+      linkedFood ? `Added “${food.name}” to favourites` : `Saved “${food.name}” to your foods as a favourite`,
+      linkedFood ? undefined : { action: { label: 'Edit food', onClick: () => navigate(`/foods/${food.id}`) } },
+    )
+  }
+
   async function saveAsMeal() {
     if (!entry) return
     const foods = new Map((await db.foods.toArray()).map((f) => [f.id, f]))
@@ -123,9 +138,20 @@ export function EntryDetailPage() {
         title=""
         back
         actions={
-          <ButtonLink to={`/entry/${entry.id}/edit`} variant="soft" size="sm">
-            <Pencil className="size-4" /> Edit
-          </ButtonLink>
+          <>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={linkedFood?.favourite ? 'Remove from favourites' : 'Add to favourites'}
+              aria-pressed={!!linkedFood?.favourite}
+              onClick={() => void toggleFavourite()}
+            >
+              <Heart className={cn('size-4.5', linkedFood?.favourite && 'fill-current text-cat-snack')} />
+            </Button>
+            <ButtonLink to={`/entry/${entry.id}/edit`} variant="soft" size="sm">
+              <Pencil className="size-4" /> Edit
+            </ButtonLink>
+          </>
         }
       />
 

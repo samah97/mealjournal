@@ -16,7 +16,7 @@ import { isValidDate, isValidTime, nowInZone } from '@/lib/datetime'
 import { useSettings } from '@/lib/hooks'
 import { entryNutrition, hasNutritionValues } from '@/lib/nutrition'
 import { saveEntry } from '@/lib/repo'
-import { foodToEntryItem, templateToEntryItems } from '@/lib/snapshot'
+import { entryFromFood, foodToEntryItem, templateToEntryItems } from '@/lib/snapshot'
 import type { DiaryEntry, DiaryEntryItem, Food, MealTemplate } from '@/lib/types'
 import { clean, deepCopy, uid } from '@/lib/utils'
 
@@ -62,10 +62,9 @@ async function buildInitial(
   if (foodId) {
     const food = await db.foods.get(foodId)
     if (food) {
-      entry.name = food.name
-      entry.items = [foodToEntryItem(food)]
-      if (food.category === 'Drinks') entry.category = 'drink'
-      entry.source = { kind: 'food', refId: food.id, refName: food.name }
+      const fromFood = entryFromFood(food, entry)
+      if (entry.category === 'drink') fromFood.category = 'drink'
+      return { entry: fromFood }
     }
   } else if (mealId) {
     const meal = await db.mealTemplates.get(mealId)
@@ -74,6 +73,7 @@ async function buildInitial(
       entry.name = meal.name
       entry.category = meal.category
       entry.items = templateToEntryItems(meal, foods)
+      if (meal.photoId) entry.photoIds = [meal.photoId]
       entry.source = { kind: 'meal', refId: meal.id, refName: meal.name, portionFactor: 1 }
       return { entry, baseItems: deepCopy(entry.items) }
     }
@@ -171,6 +171,8 @@ export function EntryFormPage() {
     if (!entry) return
     const items = [...entry.items, foodToEntryItem(food)]
     set({ items, name: entry.name || food.name })
+    // An entry without photos takes the food's photo; it can still be removed.
+    if (photos.length === 0 && food.photoId) setPhotos(slotsFromIds([food.photoId]))
     setPicker(false)
     toast.success(`Added ${food.name}`)
   }

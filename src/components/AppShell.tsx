@@ -31,7 +31,7 @@ function Logo() {
   )
 }
 
-function UpdatePrompt() {
+export function UpdatePrompt() {
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
@@ -84,7 +84,6 @@ export function AppShell() {
 
   return (
     <div className="min-h-dvh">
-      <UpdatePrompt />
 
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-line bg-surface/60 px-4 py-6 backdrop-blur lg:flex">

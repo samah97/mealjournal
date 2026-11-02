@@ -1,17 +1,18 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { BookOpen, ChefHat, History, PenLine, Plus, Search } from 'lucide-react'
+import { BookOpen, ChefHat, Heart, History, PenLine, Plus, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { CategoryDot } from '@/components/inputs'
 import { FoodRow, MealRow, sortByRecent } from '@/components/library'
 import { entrySummaryLine } from '@/components/timeline'
-import { ButtonLink } from '@/components/ui/Button'
+import { Button, ButtonLink } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Field'
 import { EmptyState, PageHeader, SectionTitle } from '@/components/ui/misc'
 import { db } from '@/lib/db'
 import { relativeDayLabel } from '@/lib/datetime'
+import { toggleFoodFavourite } from '@/lib/repo'
 import { useNow } from '@/lib/hooks'
-import type { DiaryEntry } from '@/lib/types'
+import type { DiaryEntry, Food } from '@/lib/types'
 import { cn, matchesQuery } from '@/lib/utils'
 
 type Tab = 'foods' | 'meals' | 'previous'
@@ -59,6 +60,24 @@ export function AddPage() {
   }, [recentEntries, q, isDrink])
 
   const pickFood = (id: string) => navigate(`/entry/new?food=${id}${suffix}`)
+  const foodRow = (f: Food) => (
+    <FoodRow
+      key={f.id}
+      food={f}
+      onClick={() => pickFood(f.id)}
+      trailing={
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={f.favourite ? `Remove ${f.name} from favourites` : `Add ${f.name} to favourites`}
+          aria-pressed={f.favourite}
+          onClick={() => void toggleFoodFavourite(f.id)}
+        >
+          <Heart className={cn('size-4.5', f.favourite && 'fill-current text-cat-snack')} />
+        </Button>
+      }
+    />
+  )
 
   return (
     <div>
@@ -118,9 +137,7 @@ export function AddPage() {
             <>
               <SectionTitle>Favourites</SectionTitle>
               <div className="-mx-2 flex flex-col">
-                {favourites.map((f) => (
-                  <FoodRow key={f.id} food={f} onClick={() => pickFood(f.id)} />
-                ))}
+                {favourites.map(foodRow)}
               </div>
             </>
           )}
@@ -128,9 +145,7 @@ export function AddPage() {
             <>
               <SectionTitle>Recently used</SectionTitle>
               <div className="-mx-2 flex flex-col">
-                {recent.map((f) => (
-                  <FoodRow key={f.id} food={f} onClick={() => pickFood(f.id)} />
-                ))}
+                {recent.map(foodRow)}
               </div>
             </>
           )}
@@ -139,9 +154,7 @@ export function AddPage() {
           </SectionTitle>
           {matchedFoods.length ? (
             <div className="-mx-2 flex flex-col">
-              {matchedFoods.map((f) => (
-                <FoodRow key={f.id} food={f} onClick={() => pickFood(f.id)} />
-              ))}
+              {matchedFoods.map(foodRow)}
             </div>
           ) : (
             <EmptyState icon={<BookOpen className="size-6" />} title={q ? 'No foods match' : 'No saved foods yet'}>

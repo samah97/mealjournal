@@ -1,5 +1,52 @@
-import type { DiaryEntryItem, Food, MealTemplate, MealTemplateItem, Quantity } from './types'
+import { suggestCategory } from './categories'
+import type { DiaryEntry, DiaryEntryItem, Food, MealTemplate, MealTemplateItem, Quantity } from './types'
 import { deepCopy, uid } from './utils'
+
+/**
+ * A new diary entry for one library food at the given moment. The food's photo
+ * is used as the entry photo by default (photos are shared and ref-counted, so
+ * later library edits never remove it from the entry).
+ */
+export function entryFromFood(food: Food, at: { date: string; time: string }): DiaryEntry {
+  const now = Date.now()
+  return {
+    id: uid(),
+    date: at.date,
+    time: at.time,
+    category: food.category === 'Drinks' ? 'drink' : suggestCategory(at.time),
+    name: food.name,
+    photoIds: food.photoId ? [food.photoId] : [],
+    items: [foodToEntryItem(food)],
+    source: { kind: 'food', refId: food.id, refName: food.name },
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+/**
+ * A favourite library food made from a diary entry (e.g. a coffee recorded as
+ * free text), so it can be logged again in one tap. A single-item entry keeps
+ * that item's serving, conversions and nutrition; nothing is invented.
+ */
+export function favouriteFoodFromEntry(entry: DiaryEntry): Omit<Food, 'id' | 'createdAt' | 'updatedAt' | 'useCount'> {
+  const only = entry.items.length === 1 ? entry.items[0] : undefined
+  const serving = only?.amount !== undefined && only.unit ? { amount: only.amount, unit: only.unit } : undefined
+  return {
+    name: entry.name,
+    brand: only?.brand,
+    description: entry.description,
+    category: entry.category === 'drink' ? 'Drinks' : undefined,
+    tags: [],
+    // Per-serving nutrition only stays valid for the serving it was entered for.
+    defaultServing: only?.nutrition?.basis === 'perServing' ? (only.servingSize ?? serving) : serving,
+    conversions: only ? deepCopy(only.conversions) : [],
+    ingredients: only ? deepCopy(only.ingredients) : [],
+    preparationNotes: only?.preparation ?? entry.preparationMethod,
+    nutrition: only?.nutrition ? deepCopy(only.nutrition) : undefined,
+    photoId: entry.photoIds[0],
+    favourite: true,
+  }
+}
 
 /** Copy a library food into a self-contained diary item. */
 export function foodToEntryItem(food: Food, consumed?: Partial<Quantity>): DiaryEntryItem {

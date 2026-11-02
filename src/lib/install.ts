@@ -9,10 +9,13 @@ let deferred: BeforeInstallPromptEvent | null = null
 const listeners = new Set<() => void>()
 const notify = () => listeners.forEach((l) => l())
 
-/** Must run early: Chrome fires `beforeinstallprompt` soon after load. */
+/**
+ * Must run early: Chrome fires `beforeinstallprompt` soon after load.
+ * The event is kept for the Settings "Install" button but deliberately not
+ * `preventDefault()`-ed – that would suppress Chrome's own install banner.
+ */
 export function captureInstallPrompt(): void {
   window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault()
     deferred = e as BeforeInstallPromptEvent
     notify()
   })

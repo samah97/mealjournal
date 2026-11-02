@@ -12,8 +12,9 @@ import { db } from '@/lib/db'
 import { formatLongDate, greeting } from '@/lib/datetime'
 import { useNow, useSettings } from '@/lib/hooks'
 import { combineSummaries, entryNutrition } from '@/lib/nutrition'
-import { sortEntries } from '@/lib/repo'
+import { deleteEntry, quickLogFood, sortEntries } from '@/lib/repo'
 import { addStarterFoods } from '@/lib/starter'
+import type { Food } from '@/lib/types'
 import { cn, pluralise } from '@/lib/utils'
 
 const QUICK = [
@@ -38,11 +39,20 @@ export function HomePage() {
   const drinkCount = entries.filter((e) => e.category === 'drink').length
   const otherCount = entries.filter((e) => e.category === 'other').length
 
-  const favourites = foods.filter((f) => f.favourite)
+  const favourites = sortByRecent(foods.filter((f) => f.favourite))
   const recent = sortByRecent(foods.filter((f) => f.lastUsedAt && !f.favourite)).slice(0, 8)
-  const shortcuts = [...favourites, ...recent].slice(0, 12)
   const recentMeals = sortByRecent(meals).slice(0, 4)
   const isNew = entryCount === 0 && foods.length === 0
+
+  async function logNow(food: Food) {
+    const entry = await quickLogFood(food.id)
+    if (!entry) return
+    toast.success(`Logged ${entry.name} at ${entry.time}`, {
+      duration: 8000,
+      action: { label: 'Undo', onClick: () => void deleteEntry(entry.id) },
+      cancel: { label: 'Edit', onClick: () => navigate(`/entry/${entry.id}/edit`) },
+    })
+  }
 
   return (
     <div className="pt-safe">
@@ -147,6 +157,13 @@ export function HomePage() {
         </Card>
       )}
 
+      {favourites.length > 0 && (
+        <>
+          <SectionTitle action={<span className="text-xs text-muted">Tap to log now</span>}>Favourites</SectionTitle>
+          <FoodTiles foods={favourites} onPick={(f) => void logNow(f)} quick />
+        </>
+      )}
+
       <SectionTitle action={<Link to="/diary" className="flex items-center gap-1 text-sm font-medium text-accent-ink">Diary <ArrowRight className="size-3.5" /></Link>}>
         Today
       </SectionTitle>
@@ -160,22 +177,10 @@ export function HomePage() {
         </Card>
       )}
 
-      {shortcuts.length > 0 && (
+      {recent.length > 0 && (
         <>
-          <SectionTitle>Favourites & recent</SectionTitle>
-          <div className="-mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 scrollbar-none sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0">
-            {shortcuts.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => navigate(`/entry/new?food=${f.id}`)}
-                className="flex w-28 shrink-0 flex-col items-start gap-2 rounded-2xl border border-line/70 bg-surface p-2.5 text-left shadow-card transition-transform active:scale-[0.97]"
-              >
-                <Thumb photoId={f.photoId} className="size-full aspect-square h-auto" fallback={<span className="text-xl font-semibold">{f.name.slice(0, 1)}</span>} />
-                <span className="line-clamp-2 text-[0.8125rem] font-medium leading-snug">{f.name}</span>
-              </button>
-            ))}
-          </div>
+          <SectionTitle>Recently used</SectionTitle>
+          <FoodTiles foods={recent} onPick={(f) => navigate(`/entry/new?food=${f.id}`)} />
         </>
       )}
 
@@ -211,6 +216,30 @@ export function HomePage() {
         </span>
         <ArrowRight className="size-4.5 text-muted" />
       </Link>
+    </div>
+  )
+}
+
+function FoodTiles({ foods, onPick, quick }: { foods: Food[]; onPick: (f: Food) => void; quick?: boolean }) {
+  return (
+    <div className="-mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 scrollbar-none sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0">
+      {foods.map((f) => (
+        <button
+          key={f.id}
+          type="button"
+          onClick={() => onPick(f)}
+          aria-label={quick ? `Log ${f.name} now` : `Log ${f.name}`}
+          className="relative flex w-28 shrink-0 flex-col items-start gap-2 rounded-2xl border border-line/70 bg-surface p-2.5 text-left shadow-card transition-transform active:scale-[0.97]"
+        >
+          <Thumb photoId={f.photoId} className="size-full aspect-square h-auto" fallback={<span className="text-xl font-semibold">{f.name.slice(0, 1)}</span>} />
+          {quick && (
+            <span className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-full bg-accent text-accent-fg shadow-sm">
+              <Plus className="size-4" strokeWidth={2.5} />
+            </span>
+          )}
+          <span className="line-clamp-2 text-[0.8125rem] font-medium leading-snug">{f.name}</span>
+        </button>
+      ))}
     </div>
   )
 }

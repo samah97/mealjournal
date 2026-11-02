@@ -1,4 +1,6 @@
-import { db } from './db'
+import { nowInZone } from './datetime'
+import { db, getSettings } from './db'
+import { entryFromFood, favouriteFoodFromEntry } from './snapshot'
 import type { DiaryEntry, Food, MealTemplate, Photo } from './types'
 import { deepCopy, uid } from './utils'
 
@@ -36,6 +38,40 @@ export async function deleteFood(id: string): Promise<void> {
 export async function toggleFoodFavourite(id: string): Promise<void> {
   const f = await db.foods.get(id)
   if (f) await db.foods.update(id, { favourite: !f.favourite })
+}
+
+/** The library food an entry was logged from, or a library food with the same name. */
+export async function libraryFoodForEntry(entry: DiaryEntry): Promise<Food | undefined> {
+  const linkedId = entry.source.kind === 'food' ? entry.source.refId : entry.items.length === 1 ? entry.items[0]!.sourceFoodId : undefined
+  const linked = linkedId ? await db.foods.get(linkedId) : undefined
+  if (linked) return linked
+  const name = entry.name.trim().toLowerCase()
+  return db.foods.filter((f) => f.name.trim().toLowerCase() === name).first()
+}
+
+/**
+ * Mark what an entry was as a favourite: its library food if it still exists,
+ * otherwise a new library food made from the entry. The entry itself is unchanged.
+ */
+export async function favouriteFromEntry(entry: DiaryEntry): Promise<Food> {
+  const linked = await libraryFoodForEntry(entry)
+  if (linked) {
+    if (!linked.favourite) await db.foods.update(linked.id, { favourite: true })
+    return { ...linked, favourite: true }
+  }
+  const food = newFood(favouriteFoodFromEntry(entry))
+  await saveFood(food)
+  return food
+}
+
+/** Log a library food right now with its default serving (one-tap logging of favourites). */
+export async function quickLogFood(foodId: string): Promise<DiaryEntry | undefined> {
+  const food = await db.foods.get(foodId)
+  if (!food) return undefined
+  const settings = await getSettings()
+  const entry = entryFromFood(food, nowInZone(settings.timeZone))
+  await saveEntry(entry)
+  return entry
 }
 
 export function newFood(partial: Partial<Food> = {}): Food {
