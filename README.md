@@ -155,7 +155,9 @@ Choose an **EU region** (e.g. Frankfurt) for health-related data.
 
 The app is a static site (`dist/`) and needs **HTTPS** plus an SPA fallback to `index.html`. Config files for common hosts are included.
 
-**Netlify / Cloudflare Pages**: build command `npm run build`, output directory `dist`. `public/_redirects` and `public/_headers` are picked up automatically (SPA fallback, `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer`, etc.).
+**Cloudflare (Workers, the dashboard default)**: connect the GitHub repo, build command `npm run build`, deploy command `npx wrangler deploy`. `wrangler.jsonc` serves `dist` with SPA fallback; `public/_headers` adds `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer`, etc. Don't add a `/* /index.html 200` rule to `_redirects`: Workers rejects it as an infinite loop.
+
+**Cloudflare Pages / Netlify**: build command `npm run build`, output directory `dist`. Pages falls back to `index.html` automatically; Netlify uses `netlify.toml`. Both apply `public/_headers`.
 
 **Vercel**: framework "Vite". `vercel.json` provides the rewrites and headers.
 

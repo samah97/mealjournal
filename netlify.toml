@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# SPA fallback (Cloudflare uses wrangler.jsonc; Pages falls back automatically without a 404.html)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
