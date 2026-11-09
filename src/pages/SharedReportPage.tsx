@@ -125,6 +125,9 @@ export default function SharedReportPage() {
               {checking && <Spinner />} View diary
             </Button>
           </form>
+          <p className="mt-3 text-xs text-muted">
+            Opening this report is logged (time, IP address and browser type) and visible to the person who shared it.
+          </p>
         </Centered>
       )
       break
@@ -160,6 +163,9 @@ export default function SharedReportPage() {
           <ReportView report={state.report} photo={(id) => state.photos[id]} />
           <p className="mt-5 flex items-center justify-center gap-1.5 px-4 text-center text-xs text-muted">
             <ShieldCheck className="size-3.5 shrink-0" /> Private, read-only report shared by the patient. Please don't forward this link.
+          </p>
+          <p className="mt-1 px-4 text-center text-xs text-muted">
+            Opening this report is logged (time, IP address and browser type) and visible to the person who shared it.
           </p>
         </div>
       )

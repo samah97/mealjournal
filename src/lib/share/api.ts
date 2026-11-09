@@ -234,6 +234,37 @@ export async function syncShareLinks(): Promise<void> {
   })
 }
 
+export interface AccessLogEntry {
+  id: number
+  kind: 'viewed' | 'pin_failed'
+  ip: string | null
+  userAgent: string | null
+  at: number
+}
+
+/**
+ * The access log of one of the owner's links (newest first). Fetched on demand and never
+ * stored on the device, so visitors' IP addresses don't end up in local data or backups.
+ */
+export async function fetchAccessLog(reportId: string): Promise<AccessLogEntry[]> {
+  if (!navigator.onLine) throw new Error('You are offline. Connect to see who opened this link.')
+  const sb = await getSupabase()
+  const { data, error } = await sb
+    .from('shared_report_views')
+    .select('id, kind, ip, user_agent, created_at')
+    .eq('report_id', reportId)
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    id: r.id as number,
+    kind: r.kind as AccessLogEntry['kind'],
+    ip: (r.ip as string | null) ?? null,
+    userAgent: (r.user_agent as string | null) ?? null,
+    at: new Date(r.created_at as string).getTime(),
+  }))
+}
+
 /** Revoke immediately; when offline the request is queued and retried on reconnect. */
 export async function revokeShareLink(id: string): Promise<'revoked' | 'queued'> {
   if (!navigator.onLine) {

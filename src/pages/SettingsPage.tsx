@@ -332,7 +332,7 @@ export function SettingsPage() {
           </span>
           <div className="space-y-2 text-sm leading-relaxed text-ink-2">
             <p>Your diary and photos are stored on this device and synced to your own account on our server (hosted in the EU), so all your devices show the same diary. Only you can access them: every record is protected by row-level security and photos sit in a private bucket. They are not end-to-end encrypted, so the person who runs the server can technically read them.</p>
-            <p>There are no ads, analytics or trackers, and photos are never analysed. A report is shared only when you explicitly publish a private link – and then only the report you selected.</p>
+            <p>There are no ads, analytics or trackers, and photos are never analysed. A report is shared only when you explicitly publish a private link – and then only the report you selected. For your security, each link keeps an access log (time, IP address, browser type) that only you can see; recipients are told about it, and entries are deleted after 90 days or with the link.</p>
             <p>Your account holds only your email address (your name is optional) and the date you accepted this notice. You can delete the account, with everything in it, at any time below.</p>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import type { User } from '@supabase/supabase-js'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Check, Copy, KeyRound, Link2, Mail, MessageCircle, Plus, Share2, Trash2, Unplug } from 'lucide-react'
+import { Check, Copy, History, KeyRound, Link2, Mail, MessageCircle, Plus, Share2, Trash2, Unplug } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router'
 import { toast } from 'sonner'
@@ -17,11 +17,14 @@ import { reportEntryCount } from '@/lib/report/buildReport'
 import { useLocalReport } from '@/lib/report/useReport'
 import {
   deleteShareLink,
+  fetchAccessLog,
   publishReport,
+  type AccessLogEntry,
   revokeShareLink,
   syncShareLinks,
 } from '@/lib/share/api'
 import { getSupabase, isSharingConfigured } from '@/lib/share/supabase'
+import { describeUserAgent } from '@/lib/share/userAgent'
 import type { ShareLinkRecord } from '@/lib/types'
 import { pluralise } from '@/lib/utils'
 import { isValidPin } from '../../supabase/functions/_shared/access.ts'
@@ -93,6 +96,55 @@ function ShareActions({ url, title }: { url: string; title: string }) {
   )
 }
 
+function AccessLogSheet({ link, timeZone, onClose }: { link: ShareLinkRecord | null; timeZone: string; onClose: () => void }) {
+  const [entries, setEntries] = useState<AccessLogEntry[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!link) return
+    let cancelled = false
+    setEntries(null)
+    setError(null)
+    fetchAccessLog(link.id).then(
+      (e) => !cancelled && setEntries(e),
+      (e: Error) => !cancelled && setError(e.message),
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [link])
+
+  return (
+    <Sheet open={!!link} onOpenChange={(o) => !o && onClose()} title="Access log" description={link?.title} size="sm">
+      {error ? (
+        <p className="text-sm text-danger">{error}</p>
+      ) : !entries ? (
+        <div className="grid place-items-center py-8 text-muted">
+          <Spinner className="size-5" />
+        </div>
+      ) : entries.length === 0 ? (
+        <p className="py-4 text-center text-sm text-muted">Nobody has opened this link yet.</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-line/70">
+          {entries.map((e) => (
+            <li key={e.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 py-2.5">
+              <span className="truncate text-sm font-medium">{formatTimestamp(e.at, timeZone)}</span>
+              {e.kind === 'pin_failed' ? <Badge tone="warn">Wrong PIN</Badge> : <Badge>Opened</Badge>}
+              <span className="truncate font-mono text-xs text-ink-2">{e.ip ?? 'IP unknown'}</span>
+              <span className="truncate text-right text-xs text-muted">{describeUserAgent(e.userAgent)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-4 text-xs leading-relaxed text-muted">
+        Repeat visits from the same browser within 30 minutes count once. An IP address shows roughly where the connection came
+        from (a home, an office, a mobile network); VPNs and mobile networks can hide or share it. Entries are kept for 90 days
+        and deleted with the link. Visitors are told that opening the report is logged.
+      </p>
+    </Sheet>
+  )
+}
+
 export default function SharingPage() {
   const location = useLocation()
   const settings = useSettings()
@@ -108,6 +160,7 @@ export default function SharingPage() {
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [published, setPublished] = useState<ShareLinkRecord | null>(null)
+  const [logFor, setLogFor] = useState<ShareLinkRecord | null>(null)
   const links = useLiveQuery(() => db.shareLinks.orderBy('createdAt').reverse().toArray(), [], [])
 
   useEffect(() => {
@@ -150,6 +203,7 @@ export default function SharingPage() {
           {report.options.includePhotos ? ` and ${pluralise(photoCount, 'photo')}` : ''} from{' '}
           {formatPeriod(report.periodStart, report.periodEnd)} will be uploaded to the sharing server. Nothing else from your
           diary is uploaded. Anyone with the link{usePin ? ' and PIN' : ''} can view it for {expiry} days or until you revoke it.
+          You'll see when it was opened and from which IP address.
         </>
       ),
       confirmLabel: 'Publish link',
@@ -314,6 +368,9 @@ export default function SharingPage() {
                   {st.active && !l.url && <p className="mt-2 text-xs text-muted">The link itself is only stored on the device that created it.</p>}
                   {user && (
                     <div className="mt-3 flex justify-end gap-2 border-t border-line/70 pt-3">
+                      <Button variant="ghost" size="sm" className="mr-auto" onClick={() => setLogFor(l)} disabled={!online}>
+                        <History className="size-4" /> Access log
+                      </Button>
                       {st.active && (
                         <Button variant="danger-soft" size="sm" onClick={() => void revoke(l)}>
                           Revoke
@@ -335,6 +392,8 @@ export default function SharingPage() {
           Create a private link to let your dietitian view a read-only report in their browser – no account or app needed.
         </EmptyState>
       )}
+
+      <AccessLogSheet link={logFor} timeZone={settings.timeZone} onClose={() => setLogFor(null)} />
 
       <Sheet open={!!published} onOpenChange={(o) => !o && setPublished(null)} title="Your link is ready" size="sm">
         {published?.url && (

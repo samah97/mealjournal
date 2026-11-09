@@ -72,6 +72,53 @@ export function photoIdFromPath(path: string): string {
   return path.split('/').pop()!.replace(/\.jpg$/, '')
 }
 
+// ---------------------------------------------------------------- access log
+
+/** Repeat views from the same IP and browser within this window are logged once. */
+export const ACCESS_LOG_DEDUPE_MINUTES = 30
+export const USER_AGENT_MAX_LENGTH = 300
+
+const IPV4 = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/
+
+export function isIpAddress(s: string): boolean {
+  if (IPV4.test(s)) return true
+  if (!s.includes(':') || s.length > 45 || !/^[0-9A-Fa-f:.]+$/.test(s)) return false
+  try {
+    new URL(`http://[${s}]/`) // the WHATWG URL parser validates IPv6 literals
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The visitor's IP address as reported by the platform's proxy, or null if it can't be
+ * determined. Prefers headers set by the edge proxy itself over the client-extendable
+ * X-Forwarded-For chain. Only used for the owner's access log.
+ */
+export function clientIp(headers: Headers): string | null {
+  const candidates = [
+    headers.get('cf-connecting-ip'),
+    headers.get('x-real-ip'),
+    headers.get('x-forwarded-for')?.split(',')[0],
+  ]
+  for (const raw of candidates) {
+    let ip = raw?.trim()
+    if (!ip) continue
+    const v4WithPort = /^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/.exec(ip)
+    if (v4WithPort) ip = v4WithPort[1]!
+    const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(ip)
+    if (bracketed) ip = bracketed[1]!
+    if (isIpAddress(ip)) return ip
+  }
+  return null
+}
+
+export function truncateUserAgent(ua: string | null): string | null {
+  const s = ua?.trim()
+  return s ? s.slice(0, USER_AGENT_MAX_LENGTH) : null
+}
+
 // ---------------------------------------------------------------- crypto
 
 export function bytesToHex(bytes: Uint8Array): string {

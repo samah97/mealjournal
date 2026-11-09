@@ -3,6 +3,8 @@
 // need no account. Uses the service-role key, which only exists server-side.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
+  ACCESS_LOG_DEDUPE_MINUTES,
+  clientIp,
   evaluateAccess,
   hashPin,
   hashToken,
@@ -12,6 +14,7 @@ import {
   SIGNED_URL_TTL_SECONDS,
   timingSafeEqual,
   TOKEN_PATTERN,
+  truncateUserAgent,
   type ShareRow,
 } from '../_shared/access.ts'
 
@@ -34,6 +37,40 @@ const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE
 })
 
 type Row = ShareRow & { payload: unknown; view_count: number }
+
+interface Visitor {
+  ip: string | null
+  userAgent: string | null
+}
+
+/**
+ * Record an access in the owner's log. Repeat views from the same visitor within a short
+ * window (e.g. the PDF download re-fetching photo URLs) are logged once. Returns whether a
+ * new entry was written. Failures never block the recipient.
+ */
+async function logAccess(row: Row, kind: 'viewed' | 'pin_failed', visitor: Visitor, now: Date): Promise<boolean> {
+  try {
+    if (kind === 'viewed') {
+      const since = new Date(now.getTime() - ACCESS_LOG_DEDUPE_MINUTES * 60_000).toISOString()
+      let q = admin.from('shared_report_views').select('id').eq('report_id', row.id).eq('kind', 'viewed').gte('created_at', since)
+      q = visitor.ip ? q.eq('ip', visitor.ip) : q.is('ip', null)
+      q = visitor.userAgent ? q.eq('user_agent', visitor.userAgent) : q.is('user_agent', null)
+      const { data: recent } = await q.limit(1)
+      if (recent?.length) return false
+    }
+    const { error } = await admin.from('shared_report_views').insert({
+      report_id: row.id,
+      owner_id: row.owner_id,
+      kind,
+      ip: visitor.ip,
+      user_agent: visitor.userAgent,
+      created_at: now.toISOString(),
+    })
+    return !error
+  } catch {
+    return false
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers })
@@ -66,6 +103,7 @@ Deno.serve(async (req) => {
   if (decision.kind === 'pin_required') return json(401, { status: 'pin_required' })
 
   const row = data!
+  const visitor: Visitor = { ip: clientIp(req.headers), userAgent: truncateUserAgent(req.headers.get('user-agent')) }
   if (decision.kind === 'verify_pin') {
     const computed = await hashPin(pin!, row.pin_salt!, row.pin_iterations ?? undefined)
     if (!timingSafeEqual(computed, row.pin_hash!)) {
@@ -74,6 +112,7 @@ Deno.serve(async (req) => {
         .from('shared_reports')
         .update({ failed_pin_attempts: failures, last_failed_pin_at: now.toISOString() })
         .eq('id', row.id)
+      await logAccess(row, 'pin_failed', visitor, now)
       return json(401, { status: 'pin_invalid', attemptsLeft: Math.max(0, PIN_MAX_ATTEMPTS - failures) })
     }
   }
@@ -91,9 +130,14 @@ Deno.serve(async (req) => {
     }
   }
 
+  const newVisit = await logAccess(row, 'viewed', visitor, now)
   await admin
     .from('shared_reports')
-    .update({ view_count: row.view_count + 1, last_viewed_at: now.toISOString(), failed_pin_attempts: 0 })
+    .update({
+      view_count: row.view_count + (newVisit ? 1 : 0),
+      last_viewed_at: now.toISOString(),
+      failed_pin_attempts: 0,
+    })
     .eq('id', row.id)
 
   return json(200, { status: 'ok', report: row.payload, photos, expiresAt: row.expires_at })
