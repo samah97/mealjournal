@@ -41,10 +41,35 @@ export async function sendSignInCode(email: string): Promise<void> {
     options: { shouldCreateUser: false, emailRedirectTo: location.origin },
   })
   if (!error || isUnknownAccountError(error)) return
+  throw sendCodeError(error)
+}
+
+/** Shown after sign-up for every address: an existing account simply gets a sign-in code. */
+export const SIGNUP_CODE_SENT_MESSAGE = 'A code is on its way.'
+
+/**
+ * Register (or, for an address that already has an account, sign in) with a one-time code.
+ * The privacy consent is stored in the account's user_metadata, which Supabase only writes
+ * when it creates the user, so it records what a new user agreed to and when.
+ */
+export async function sendSignUpCode(email: string, privacyVersion: string): Promise<void> {
+  const sb = await getSupabase()
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: true,
+      emailRedirectTo: location.origin,
+      data: { privacy_version: privacyVersion, privacy_accepted_at: new Date().toISOString() },
+    },
+  })
+  if (error) throw sendCodeError(error)
+}
+
+function sendCodeError(error: { status?: number; message: string }): Error {
   if (error.status === 429 || /rate limit|too many|seconds/i.test(error.message)) {
-    throw new Error('Too many attempts. Please wait a minute and try again.')
+    return new Error('Too many attempts. Please wait a minute and try again.')
   }
-  throw new Error('Could not send the code. Check your connection and try again.')
+  return new Error('Could not send the code. Check your connection and try again.')
 }
 
 export function isUnknownAccountError(error: { code?: string; message?: string }): boolean {

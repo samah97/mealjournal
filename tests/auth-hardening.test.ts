@@ -9,7 +9,7 @@ vi.mock('../src/lib/share/supabase', () => ({
   getSupabase: async () => ({ auth: { signInWithOtp, verifyOtp } }),
 }))
 
-const { sendSignInCode, verifySignInCode, isUnknownAccountError } = await import('../src/lib/share/api')
+const { sendSignInCode, sendSignUpCode, verifySignInCode, isUnknownAccountError } = await import('../src/lib/share/api')
 
 beforeEach(() => {
   signInWithOtp.mockReset()
@@ -52,5 +52,30 @@ describe('sign-in hardening', () => {
     expect(isUnknownAccountError({ code: 'otp_disabled' })).toBe(true)
     expect(isUnknownAccountError({ message: 'Signups not allowed for otp' })).toBe(true)
     expect(isUnknownAccountError({ code: 'over_email_send_rate_limit', message: 'rate limit' })).toBe(false)
+  })
+})
+
+describe('sign-up', () => {
+  it('creates the user and records the accepted privacy notice', async () => {
+    signInWithOtp.mockResolvedValue({ error: null })
+    await sendSignUpCode('new@example.com', '2026-11-03')
+    const { email, options } = signInWithOtp.mock.calls[0]![0]
+    expect(email).toBe('new@example.com')
+    expect(options.shouldCreateUser).toBe(true)
+    expect(options.data.privacy_version).toBe('2026-11-03')
+    expect(Number.isNaN(Date.parse(options.data.privacy_accepted_at))).toBe(false)
+  })
+
+  it('collects nothing but the email address', async () => {
+    signInWithOtp.mockResolvedValue({ error: null })
+    await sendSignUpCode('new@example.com', 'v1')
+    expect(Object.keys(signInWithOtp.mock.calls[0]![0].options.data).sort()).toEqual(['privacy_accepted_at', 'privacy_version'])
+  })
+
+  it('reports rate limits and network failures', async () => {
+    signInWithOtp.mockResolvedValue({ error: { code: 'over_email_send_rate_limit', message: 'rate limit', status: 429 } })
+    await expect(sendSignUpCode('a@example.com', 'v1')).rejects.toThrow(/Too many attempts/)
+    signInWithOtp.mockResolvedValue({ error: { message: 'Failed to fetch', status: 0 } })
+    await expect(sendSignUpCode('a@example.com', 'v1')).rejects.toThrow(/Could not send/)
   })
 })

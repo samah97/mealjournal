@@ -8,14 +8,17 @@ project_id = "mealjournal"
 # Replace with your deployed URL for production (or set it in the dashboard).
 site_url = "http://localhost:5173"
 additional_redirect_urls = ["http://localhost:5173", "http://127.0.0.1:5173", "http://127.0.0.1:5174"]
-# Invite-only: accounts are created by the project owner (dashboard → Authentication → Add user).
-enable_signup = false
+# Open self-registration: anyone can create an account with an email code (no passwords).
+# The client only creates users from the "Create account" flow (`shouldCreateUser: true`);
+# "Sign in" never creates one. Abuse is limited by the rate limits below.
+enable_signup = true
 enable_anonymous_sign_ins = false
 
 [auth.email]
-# Despite its name this switches the email provider itself on (needed for sign-in codes);
-# new accounts are still blocked by `[auth] enable_signup = false` above.
+# Despite its name this switches the email provider itself on (needed for sign-in codes).
 enable_signup = true
+# A new address stays unconfirmed until its code is entered (hosted default; "Confirm email").
+enable_confirmations = true
 # One-time codes: 6 digits, valid for 10 minutes, at most one email per address per minute.
 otp_length = 6
 otp_expiry = 600
@@ -30,7 +33,12 @@ token_verifications = 10
 token_refresh = 150
 anonymous_users = 0
 
-# The template includes the one-time code, so you can sign in inside the installed app.
+# The templates include the one-time code, so you can sign in inside the installed app.
+# A new account gets "confirmation", an existing one "magic_link".
+[auth.email.template.confirmation]
+subject = "Your MealJournal code"
+content_path = "./supabase/templates/confirmation.html"
+
 [auth.email.template.magic_link]
 subject = "Your MealJournal sign-in code"
 content_path = "./supabase/templates/magic_link.html"
@@ -38,3 +46,7 @@ content_path = "./supabase/templates/magic_link.html"
 [functions.get-shared-report]
 # Recipients have no account: the function authorises access itself via the share token.
 verify_jwt = false
+
+[functions.delete-account]
+# Deletes the caller's own account: the user comes from the verified JWT.
+verify_jwt = true

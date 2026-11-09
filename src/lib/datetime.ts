@@ -109,3 +109,13 @@ export function formatTimestamp(ms: number, timeZone: string): string {
     hourCycle: 'h23',
   }).format(new Date(ms))
 }
+
+/** IANA zones the browser knows, falling back to just the current one on old engines. */
+export function listTimeZones(current: string): string[] {
+  try {
+    const zones = Intl.supportedValuesOf('timeZone')
+    return zones.includes(current) ? zones : [current, ...zones]
+  } catch {
+    return [current]
+  }
+}

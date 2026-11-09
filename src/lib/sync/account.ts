@@ -22,3 +22,18 @@ export async function signOutAndWipe(everywhere = false): Promise<void> {
   await wipeLocalData()
   await sb.auth.signOut({ scope: everywhere ? 'global' : 'local' }).catch(() => {})
 }
+
+/**
+ * Permanently delete the account: its synced diary, photos and share links on the server
+ * (Edge Function `delete-account`), then everything on this device. Other devices are
+ * signed out the next time they talk to the server.
+ */
+export async function deleteAccountAndWipe(): Promise<void> {
+  if (!navigator.onLine) throw new Error('You are offline. Connect to the internet to delete your account.')
+  stopSync()
+  const sb = await getSupabase()
+  const { error } = await sb.functions.invoke('delete-account', { method: 'POST' })
+  if (error) throw new Error('Could not delete your account. Please try again.')
+  await wipeLocalData()
+  await sb.auth.signOut({ scope: 'local' }).catch(() => {})
+}

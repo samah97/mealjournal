@@ -66,6 +66,17 @@ export async function updateSettings(patch: Partial<Omit<Settings, 'id'>>): Prom
   await db.settings.put({ ...current, ...patch, id: 'app' })
 }
 
+/**
+ * Mark this device as set up without queueing a sync: `onboarded` is per-device, and an
+ * upload here would overwrite the account's settings with this device's defaults.
+ */
+export async function markOnboarded(): Promise<void> {
+  await db.transaction('rw', db.settings, async (tx) => {
+    skipTracking(tx)
+    await db.settings.put({ ...(await getSettings()), onboarded: true, id: 'app' })
+  })
+}
+
 /** Ask the browser not to evict our data under storage pressure. */
 export async function requestPersistentStorage(): Promise<boolean | null> {
   if (!navigator.storage?.persist) return null

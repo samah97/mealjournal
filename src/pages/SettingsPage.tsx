@@ -13,6 +13,7 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  UserX,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
@@ -22,13 +23,14 @@ import { useConfirm } from '@/components/ui/confirm'
 import { Field, Input, Select } from '@/components/ui/Field'
 import { Card, PageHeader, SectionTitle, Spinner, Switch } from '@/components/ui/misc'
 import { backupFilename, backupStats, createBackup, parseBackup, restoreBackup } from '@/lib/backup'
+import { listTimeZones } from '@/lib/datetime'
 import { db, updateSettings } from '@/lib/db'
 import { useOnline, useSettings } from '@/lib/hooks'
 import { useInstallPrompt } from '@/lib/install'
 import { deleteAllData } from '@/lib/repo'
 import { getCurrentUser } from '@/lib/share/api'
 import { isSharingConfigured } from '@/lib/share/supabase'
-import { signOutAndWipe, unsyncedChanges } from '@/lib/sync/account'
+import { deleteAccountAndWipe, signOutAndWipe, unsyncedChanges } from '@/lib/sync/account'
 import { flush } from '@/lib/sync/engine'
 import { describeSync, useSync } from '@/lib/sync/useSync'
 import { addStarterFoods, removeStarterFoods } from '@/lib/starter'
@@ -84,13 +86,7 @@ export function SettingsPage() {
     }),
     [],
   )
-  const zones = (() => {
-    try {
-      return Intl.supportedValuesOf('timeZone')
-    } catch {
-      return [settings.timeZone]
-    }
-  })()
+  const zones = listTimeZones(settings.timeZone)
 
   async function exportBackup() {
     try {
@@ -142,6 +138,24 @@ export function SettingsPage() {
     const left = await unsyncedChanges()
     if (left > 0) toast.warning("You're offline – the deletion will reach your account when you reconnect. Stay signed in until then.")
     else toast.success('All data deleted')
+  }
+
+  async function deleteAccount() {
+    const ok = await confirm({
+      title: 'Delete your account?',
+      message: `Your account${email ? ` (${email})` : ''} is closed and everything in it is permanently deleted: every diary entry, food, meal, photo and setting on all your devices, and all shared links. Consider exporting a backup first.`,
+      confirmLabel: 'Delete my account',
+      danger: true,
+    })
+    if (!ok) return
+    const sure = await confirm({ title: 'Are you absolutely sure?', message: 'This cannot be undone.', confirmLabel: 'Yes, delete my account', danger: true })
+    if (!sure) return
+    try {
+      await deleteAccountAndWipe()
+      toast.success('Your account has been deleted')
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
   }
 
   async function signOut(everywhere: boolean) {
@@ -318,15 +332,19 @@ export function SettingsPage() {
           </span>
           <div className="space-y-2 text-sm leading-relaxed text-ink-2">
             <p>Your diary and photos are stored on this device and synced to your own account on our server (hosted in the EU), so all your devices show the same diary. Only you can access them: every record is protected by row-level security and photos sit in a private bucket. They are not end-to-end encrypted, so the person who runs the server can technically read them.</p>
-            <p>There are no ads, analytics or trackers, and photos are never analysed. A report is shared only when you explicitly publish a private link – and then only the report you selected. The account is invite-only.</p>
+            <p>There are no ads, analytics or trackers, and photos are never analysed. A report is shared only when you explicitly publish a private link – and then only the report you selected.</p>
+            <p>Your account holds only your email address (your name is optional) and the date you accepted this notice. You can delete the account, with everything in it, at any time below.</p>
           </div>
         </div>
       </Card>
 
       <SectionTitle>Danger zone</SectionTitle>
-      <Card className="p-4">
+      <Card className="flex flex-col gap-2.5 p-4">
         <Button variant="danger-soft" block onClick={() => void wipe()}>
           <Trash2 className="size-4" /> Delete all my data
+        </Button>
+        <Button variant="danger-soft" block onClick={() => void deleteAccount()} disabled={!online}>
+          <UserX className="size-4" /> Delete my account
         </Button>
       </Card>
 

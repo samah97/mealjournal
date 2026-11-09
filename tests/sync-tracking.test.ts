@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it } from 'vitest'
-import { db, updateSettings, wipeLocalData } from '../src/lib/db'
+import { db, getSettings, markOnboarded, updateSettings, wipeLocalData } from '../src/lib/db'
 import { deleteAllData, deleteFood, newFood, saveEntry, saveFood, toggleFoodFavourite } from '../src/lib/repo'
 import { addStarterFoods } from '../src/lib/starter'
 import { changeTimestamp, observeTimestamp, skipTracking } from '../src/lib/sync/tracking'
@@ -59,6 +59,12 @@ describe('change tracking', () => {
       [photo],
     )
     expect(await outbox()).toEqual([`put entries/${entryId}`, `put foods/${food.id}`, `put photos/${photo.id}`].sort())
+  })
+
+  it('marks a device onboarded without queueing an upload of its settings', async () => {
+    await markOnboarded()
+    expect((await getSettings()).onboarded).toBe(true)
+    expect(await outbox()).toEqual([])
   })
 
   it('turns a clear() into tombstones for every record', async () => {
