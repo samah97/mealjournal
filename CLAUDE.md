@@ -58,7 +58,7 @@ npx -y supabase@2 start                       # applies migrations
 npx -y supabase@2 test db                     # pgTAP (shared_reports + sync)
 npx -y supabase@2 functions serve --no-verify-jwt
 ```
-Temporary `.env.development.local` with `VITE_SUPABASE_URL=http://127.0.0.1:54321` + the printed publishable key. Signups are disabled, so create users with the admin API (`POST /auth/v1/admin/users`, secret key, `email_confirm: true`); sign-in codes appear in Mailpit (http://127.0.0.1:54324, API `/api/v1/search?query=to:<email>`; the same address can only be mailed once per 60 s). Use `dev` and `recipient` as two devices (they move to other ports if 5173/5174 are taken); open share links on the `recipient` origin. Simulate offline by overriding `navigator.onLine` in the page. Drive Dexie from the page console with `await import('/src/lib/db.ts')`. Afterwards: delete the env file and `npx supabase stop --no-backup`.
+Temporary `.env.development.local` with `VITE_SUPABASE_URL=http://127.0.0.1:54321` + the printed publishable key. Register through the app's "Create account" flow, or create a ready-made user with the admin API (`POST /auth/v1/admin/users`, secret key, `email_confirm: true`); codes appear in Mailpit (http://127.0.0.1:54324, API `/api/v1/search?query=to:<email>`; the same address can only be mailed once per 60 s). Use `dev` and `recipient` as two devices (they move to other ports if 5173/5174 are taken); open share links on the `recipient` origin. Simulate offline by overriding `navigator.onLine` in the page. Drive Dexie from the page console with `await import('/src/lib/db.ts')`. Afterwards: delete the env file and `npx supabase stop --no-backup`.
 
 ## Conventions
 
