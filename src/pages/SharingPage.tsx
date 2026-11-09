@@ -139,7 +139,7 @@ function AccessLogSheet({ link, timeZone, onClose }: { link: ShareLinkRecord | n
       <p className="mt-4 text-xs leading-relaxed text-muted">
         Repeat visits from the same browser within 30 minutes count once. An IP address shows roughly where the connection came
         from (a home, an office, a mobile network); VPNs and mobile networks can hide or share it. Entries are kept for 90 days
-        and deleted with the link. Visitors are told that opening the report is logged.
+        and deleted with the link.
       </p>
     </Sheet>
   )
